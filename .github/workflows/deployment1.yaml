@@ -1,18 +1,49 @@
-name: Deployment Exercise 1
-on: push
+name: Release new app version
+
+on:
+  push:
+    branches: ['main']
+  workflow_dispatch:
+    inputs:
+      bumpVersion:
+        description: 'Version'
+        required: true
+        default: 'minor'
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
+
 jobs:
-  deploy:
+  bump_version:
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [20.10.0]
+    if: "!startsWith(github.event.head_commit.message, '[RELEASE]') && !startsWith(github.event.head_commit.message, '[ACTIONS]')"
     steps:
-      - name: Get code
-        uses: actions/checkout@v3
-      - name: Install dependencies
-        run: npm ci
-      - name: Lint
-        run: npm run lint
-      - name: Test code
-        run: npm run test
-      - name: Build code
-        run: npm run build
-      - name: Deploy code
-        run: echo "Deploying..."
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.5.3
+        with:
+          ssh-private-key: ${{ secrets.LEARNING_REPO_DEPLOYMENT_KEY}}
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@stagewood'
+      - name: Set GitHub name
+        run: git config --global user.name 'Ember96'
+      - name: Set GitHub email
+        run: git config --global user.email 'gnomeaddict96@gmail.com'
+      - name: Update version number
+        run: npm version ${{ inputs.bumpVersion || 'patch' }} -m "[RELEASE] %s"
+      - name: Push tags to github
+        run: git push --tags
+      - name: Push release commit to github
+        run: git push origin ${{ github.ref_name }}
